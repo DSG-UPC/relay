@@ -127,13 +127,13 @@ func (ethSrv *EthService) LoadDeviceFactoryContract(contractAddr common.Address)
 }
 
 // DeployDeviceContract deploys the Device contract to eth network
-func (ethSrv *EthService) DeployDeviceContract(name string, value int) error {
+func (ethSrv *EthService) DeployDeviceContract(name string, value *big.Int) error {
 	auth, err := GetAuth()
 	if err != nil {
 		return err
 	}
 
-	address, tx, _, err := token.CreateDevice(auth, name, value)
+	address, tx, _, err := ethSrv.DeviceFactory.CreateDevice(auth, name, value)
 	if err != nil {
 		return err
 	}
