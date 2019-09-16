@@ -24,13 +24,13 @@ var ContractsCommands = []cli.Command{
 			Subcommands: []cli.Command{
 				{
 					Name:   "deploy",
-					Usage:  "deploy device smart contract",
-					Action: cmdDeviceDeploy,
+					Usage:  "deploy token smart contract",
+					Action: cmdTokenDeploy,
 				},
 				{
 					Name:   "mint",
-					Usage:  "mint a device after deploying the contract",
-					Action: cmdDeviceMint,
+					Usage:  "mint tokens that will go to this Relay address",
+					Action: cmdTokenMint,
 				},
 				{
 					Name:   "transfer",
@@ -54,31 +54,25 @@ var ContractsCommands = []cli.Command{
 }
 
 func cmdDeviceDeploy(c *cli.Context) error {
-	name := c.Args().Get(0)
+	name := c.Args().Get(1)
 	if name == "" {
-		color.Red("No amount specified. Usage: contracts token mint [amount]")
 		os.Exit(0)
 	}
-	valueStr := c.Args().Get(0)
-	if valueStr == "" {
-		color.Red("No amount specified. Usage: contracts token mint [amount]")
+	initValueStr := c.Args().Get(1)
+	if initValueStr == "" {
 		os.Exit(0)
 	}
-	value, err := utils.StringToBigInt(valueStr)
+	initValue, err := utils.StringToBigInt(initValueStr)
 	if err != nil {
 		color.Red("Amount parsing error. Usage: contracts token mint [amount]")
 		os.Exit(0)
 	}
 	ethSrv := loadKeyStore(c, nil)
-	auth, err := eth.GetAuth()
-	if err != nil {
-		return err
-	}
-	tx, err = ethSrv.DeviceFactory.CreateDevice(auth, name, value)
+	err = ethSrv.DeployDeviceContract(name, initValue)
 	return err
 }
 
-func cmdDeviceMint(c *cli.Context) error {
+func cmdTokenMint(c *cli.Context) error {
 	amountStr := c.Args().Get(0)
 	if amountStr == "" {
 		color.Red("No amount specified. Usage: contracts token mint [amount]")

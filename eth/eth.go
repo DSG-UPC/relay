@@ -29,18 +29,17 @@ import (
 )
 
 type EthService struct {
-	storage              *storage.Storage
-	ks                   *keystore.KeyStore
-	acc                  *accounts.Account
-	client               *ethclient.Client
-	Token                *token.Token
-	DeviceFactory        *token.DeviceFactory
-	Scanner              *ScanEventDispatcher
-	tokenAddress         common.Address
-	deviceFactoryAddress common.Address
-	deviceFactoryAbi     *abi.ABI
-	depositDeviceAbi     *abi.ABI
-	tokenAbi             *abi.ABI
+	storage      *storage.Storage
+	ks           *keystore.KeyStore
+	acc          *accounts.Account
+	client       *ethclient.Client
+	Token        *token.Token
+	Device       *token.Device
+	devices      map[common.Address]*token.DepositeDevice
+	Scanner      *ScanEventDispatcher
+	tokenAddress common.Address
+	deviceAbi    *abi.ABI
+	tokenAbi     *abi.ABI
 }
 
 func NewEthService(ks *keystore.KeyStore, acc *accounts.Account, storage *storage.Storage) *EthService {
@@ -56,12 +55,21 @@ func NewEthService(ks *keystore.KeyStore, acc *accounts.Account, storage *storag
 		log.Panic(err)
 	}
 
+	deviceAbi, err := abi.JSON(strings.NewReader(token.DeviceABI))
+	if err != nil {
+		log.Panic(err)
+	}
+
+	devices := make(map[common.Address]*token.DepositeDevice)
+
 	service := &EthService{
-		storage:  storage,
-		ks:       ks,
-		acc:      acc,
-		client:   client,
-		tokenAbi: &tokenAbi,
+		storage:   storage,
+		ks:        ks,
+		acc:       acc,
+		client:    client,
+		devices:   devices,
+		tokenAbi:  &tokenAbi,
+		deviceAbi: &deviceAbi,
 	}
 
 	service.Scanner = NewScanEventDispatcher(client, service.scannedTx, service)
@@ -116,16 +124,6 @@ func (ethSrv *EthService) DeployTokenContract() error {
 	return nil
 }
 
-// LoadDeviceFactoryContract loads already deployed DeviceFactory contract
-func (ethSrv *EthService) LoadDeviceFactoryContract(contractAddr common.Address) {
-	instance, err := token.NewDeviceFactory(contractAddr, ethSrv.client)
-	if err != nil {
-		color.Red(err.Error())
-	}
-	ethSrv.deviceFactoryAddress = contractAddr
-	ethSrv.DeviceFactory = instance
-}
-
 // DeployDeviceContract deploys the Device contract to eth network
 func (ethSrv *EthService) DeployDeviceContract(name string, value *big.Int) error {
 	auth, err := GetAuth()
@@ -133,16 +131,26 @@ func (ethSrv *EthService) DeployDeviceContract(name string, value *big.Int) erro
 		return err
 	}
 
-	address, tx, _, err := ethSrv.DeviceFactory.CreateDevice(auth, name, value)
+	address, tx, _, err := token.DeployDepositDevice(auth, ethSrv.client, name, value)
 	if err != nil {
 		return err
 	}
 	//TODO Create storage for device contracts
-	ethSrv.tokenAddress = address
+	ethSrv.devices[address] = nil
 
-	color.Green("token contract deployed at address: " + address.Hex())
+	color.Green("Device contract deployed at address: " + address.Hex())
 	fmt.Println("deployment transaction: " + tx.Hash().Hex())
 	return nil
+}
+
+// LoadTokenContract loads already deployed Token contract
+func (ethSrv *EthService) LoadDeviceContract(contractAddr common.Address) {
+	instance, err := token.NewDepositDevice(contractAddr, ethSrv.client)
+	if err != nil {
+		color.Red(err.Error())
+	}
+	ethSrv.devices[contractAddr] = instance
+	ethSrv.Device = instance
 }
 
 // LoadTokenContract loads already deployed Token contract
