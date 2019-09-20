@@ -290,13 +290,14 @@ func cmdTokenTransfer(c *cli.Context) error {
 }
 
 func getRSV(auth *bind.TransactOpts, ethSrv *eth.EthService, amount *big.Int, contractAddr, fromAddr, toAddr common.Address) (r, s [32]byte, v byte, err error) {
+	var emptyBytes [32]byte
 	nonce, err := ethSrv.Client().PendingNonceAt(context.Background(), fromAddr)
 	if err != nil {
-		return err
+		return emptyBytes, emptyBytes, byte(0), err
 	}
 	gasPrice, err := ethSrv.Client().SuggestGasPrice(context.Background())
 	if err != nil {
-		return err
+		return emptyBytes, emptyBytes, byte(0), err
 	}
 
 	auth.Nonce = big.NewInt(int64(nonce))
@@ -306,10 +307,10 @@ func getRSV(auth *bind.TransactOpts, ethSrv *eth.EthService, amount *big.Int, co
 
 	tokenNonce, err := ethSrv.Token.NonceOf(nil, fromAddr)
 	if err != nil {
-		return err
+		return emptyBytes, emptyBytes, byte(0), err
 	}
 
-	tokenNonceBytes := utils.Uint64ToEthBytes(nonce.Uint64())
+	tokenNonceBytes := utils.Uint64ToEthBytes(tokenNonce.Uint64())
 	amountBytes := utils.Uint64ToEthBytes(amount.Uint64())
 
 	// build tx msg
@@ -325,7 +326,7 @@ func getRSV(auth *bind.TransactOpts, ethSrv *eth.EthService, amount *big.Int, co
 
 	// sign msg
 	sig, err := ethSrv.SignBytes(msgBytes)
-	var emptyBytes [32]byte
+
 	if err != nil {
 		return emptyBytes, emptyBytes, byte(0), err
 	}
