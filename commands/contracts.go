@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"os"
 
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/fatih/color"
 	"github.com/kvartalo/relay/config"
@@ -24,8 +25,8 @@ var ContractsCommands = []cli.Command{
 			Subcommands: []cli.Command{
 				{
 					Name:   "deploy",
-					Usage:  "deploy token smart contract",
-					Action: cmdTokenDeploy,
+					Usage:  "deploy device smart contract",
+					Action: cmdDeviceDeploy,
 				},
 				{
 					Name:   "mint",
@@ -75,31 +76,51 @@ func cmdDeviceDeploy(c *cli.Context) error {
 func cmdTokenMint(c *cli.Context) error {
 	amountStr := c.Args().Get(0)
 	if amountStr == "" {
-		color.Red("No amount specified. Usage: contracts token mint [amount]")
+		color.Red("No amount specified. Usage: contracts token mint amount deviceAddress dstAddress")
 		os.Exit(0)
 	}
 	amount, err := utils.StringToBigInt(amountStr)
 	if err != nil {
-		color.Red("Amount parsing error. Usage: contracts token mint [amount]")
+		color.Red("Amount parsing error. Usage: contracts ttoken mint amount deviceAddress dstAddress")
 		os.Exit(0)
 	}
 
-	ethSrv := loadRelay(c, nil)
+	deviceAddressStr := c.Args().Get(1)
+	if deviceAddressStr == "" {
+		color.Red("No device specified. Usage: contracts token mint amount deviceAddress dstAddress")
+		os.Exit(0)
+	}
+	deviceAddr := common.HexToAddress(deviceAddressStr)
 
-	addr := common.HexToAddress(config.C.Keystorage.Address)
+	destinationAddressStr := c.Args().Get(2)
+	if destinationAddressStr == "" {
+		color.Red("No destination specified. Usage: contracts token mint amount deviceAddress dstAddress")
+		os.Exit(0)
+	}
+	destinationAddress := common.HexToAddress(destinationAddressStr)
+	fromAddr := common.HexToAddress(config.C.Keystorage.Address)
+
+	ethSrv := loadRelay(c, nil)
 
 	auth, err := eth.GetAuth()
 	if err != nil {
 		return err
 	}
-	tx, err := ethSrv.Token.Mint(auth, addr, amount)
+
+	r, s, v, err := getRSV(auth, ethSrv, amount, deviceAddr, fromAddr, destinationAddress)
 	if err != nil {
-		return err
+		color.Red("Error signing transactions")
+		os.Exit(0)
 	}
 
-	color.Green("mint success, tx: " + tx.Hash().Hex())
+	// tx, err := ethSrv.Token.Mint(auth, addr, amount)
+	// if err != nil {
+	// 	return err
+	// }
 
-	tokenBalance, err := ethSrv.Token.BalanceOf(nil, addr)
+	// color.Green("mint success, tx: " + tx.Hash().Hex())
+
+	tokenBalance, err := ethSrv.devices[deviceAddr].Mint(nil, destinationAddress, r, s, v)
 	if err != nil {
 		return err
 	}
@@ -266,4 +287,56 @@ func cmdTokenTransfer(c *cli.Context) error {
 
 	color.Green("Token transfer success, tx: " + tx.Hash().Hex())
 	return nil
+}
+
+func getRSV(auth *bind.TransactOpts, ethSrv *eth.EthService, amount *big.Int, contractAddr, fromAddr, toAddr common.Address) (r, s [32]byte, v byte, err error) {
+	nonce, err := ethSrv.Client().PendingNonceAt(context.Background(), fromAddr)
+	if err != nil {
+		return err
+	}
+	gasPrice, err := ethSrv.Client().SuggestGasPrice(context.Background())
+	if err != nil {
+		return err
+	}
+
+	auth.Nonce = big.NewInt(int64(nonce))
+	auth.Value = big.NewInt(0)     // in wei
+	auth.GasLimit = uint64(300000) // in units
+	auth.GasPrice = gasPrice
+
+	tokenNonce, err := ethSrv.Token.NonceOf(nil, fromAddr)
+	if err != nil {
+		return err
+	}
+
+	tokenNonceBytes := utils.Uint64ToEthBytes(nonce.Uint64())
+	amountBytes := utils.Uint64ToEthBytes(amount.Uint64())
+
+	// build tx msg
+	var msgBytes []byte
+	msgBytes = append(msgBytes, byte(0x19))
+	msgBytes = append(msgBytes, byte(0))
+	msgBytes = append(msgBytes, contractAddr.Bytes()...)
+	msgBytes = append(msgBytes, tokenNonceBytes...)
+	msgBytes = append(msgBytes, fromAddr.Bytes()...)
+	msgBytes = append(msgBytes, toAddr.Bytes()...)
+	msgBytes = append(msgBytes, amountBytes...)
+	fmt.Println(common.ToHex(msgBytes))
+
+	// sign msg
+	sig, err := ethSrv.SignBytes(msgBytes)
+	var emptyBytes [32]byte
+	if err != nil {
+		return emptyBytes, emptyBytes, byte(0), err
+	}
+	sig[64] += 27
+
+	// get r, s, v from sig
+	//var r, s [32]byte
+	copy(r[:], sig[:32])
+	copy(s[:], sig[32:64])
+	//v := sig[64]
+	v = sig[64]
+	return r, s, v, nil
+
 }

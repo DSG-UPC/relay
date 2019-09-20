@@ -34,8 +34,8 @@ type EthService struct {
 	acc          *accounts.Account
 	client       *ethclient.Client
 	Token        *token.Token
-	Device       *token.Device
-	devices      map[common.Address]*token.DepositeDevice
+	Device       *token.DepositDevice
+	devices      map[common.Address]*token.DepositDevice
 	Scanner      *ScanEventDispatcher
 	tokenAddress common.Address
 	deviceAbi    *abi.ABI
@@ -55,12 +55,12 @@ func NewEthService(ks *keystore.KeyStore, acc *accounts.Account, storage *storag
 		log.Panic(err)
 	}
 
-	deviceAbi, err := abi.JSON(strings.NewReader(token.DeviceABI))
+	deviceAbi, err := abi.JSON(strings.NewReader(token.DepositDeviceABI))
 	if err != nil {
 		log.Panic(err)
 	}
 
-	devices := make(map[common.Address]*token.DepositeDevice)
+	devices := make(map[common.Address]*token.DepositDevice)
 
 	service := &EthService{
 		storage:   storage,
